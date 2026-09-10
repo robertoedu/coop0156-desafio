@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class AnaliseCreditoTest extends TestCase
 {
@@ -27,6 +28,65 @@ class AnaliseCreditoTest extends TestCase
         ]);
 
         $response->assertStatus(501);
+    }
+
+    public function test_rejeita_solicitacao_sem_campos_obrigatorios(): void
+    {
+        $response = $this->postJson('/api/analise-credito', []);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'nome',
+                'cpf',
+                'renda_mensal',
+                'tipo_credito',
+                'valor_solicitado',
+            ]);
+
+        $this->assertDatabaseCount('clientes', 0);
+        $this->assertDatabaseCount('analises_credito', 0);
+    }
+
+    public static function dadosInvalidos(): array
+    {
+        return [
+            'cpf curto' => ['cpf', '1234567890'],
+            'cpf longo' => ['cpf', '123456789012'],
+            'cpf com letra' => ['cpf', '1234567890a'],
+            'cpf com pontuacao' => ['cpf', '123.456.789-01'],
+            'tipo de credito desconhecido' => ['tipo_credito', 'empresarial'],
+            'renda negativa' => ['renda_mensal', -100],
+            'renda nao numerica' => ['renda_mensal', 'abc'],
+            'valor solicitado zero' => ['valor_solicitado', 0],
+            'valor solicitado negativo' => ['valor_solicitado', -100],
+            'valor solicitado nao numerico' => ['valor_solicitado', 'abc'],
+        ];
+    }
+
+    #[DataProvider('dadosInvalidos')]
+    public function test_rejeita_solicitacao_com_dado_invalido(
+        string $campo,
+        mixed $valor,
+    ): void {
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678901',
+            'renda_mensal' => 3000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ];
+
+        $dados[$campo] = $valor;
+
+        $response = $this->postJson('/api/analise-credito', $dados);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([$campo]);
+
+        $this->assertDatabaseCount('clientes', 0);
+        $this->assertDatabaseCount('analises_credito', 0);
     }
 
     /**

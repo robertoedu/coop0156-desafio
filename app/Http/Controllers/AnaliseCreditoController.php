@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Http\Requests\SolicitarAnaliseCreditoRequest;
 
 class AnaliseCreditoController extends Controller
 {
@@ -26,12 +26,12 @@ class AnaliseCreditoController extends Controller
      *  5. Aplicar as regras de negócio (renda mínima, faixas de score, comprometimento de renda).
      *  6. Atualizar e retornar a análise persistida com o resultado final.
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Http\Requests\SolicitarAnaliseCreditoRequest  $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function solicitar(Request $request)
+    public function solicitar(SolicitarAnaliseCreditoRequest $request)
     {
-        // TODO: Implementar validação, consulta ao Bureau e regras de análise.
+        // TODO: Implementar consulta ao Bureau e regras de análise.
         return response()->json(['message' => 'Not implemented'], 501);
     }
 
