@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use App\Enums\StatusAnalise;
+use App\Models\Cliente;
+use App\Services\AnaliseCreditoService;
 
 class AnaliseCreditoTest extends TestCase
 {
@@ -87,6 +90,84 @@ class AnaliseCreditoTest extends TestCase
 
         $this->assertDatabaseCount('clientes', 0);
         $this->assertDatabaseCount('analises_credito', 0);
+    }
+
+    public function test_cria_cliente_e_analise_pendente_para_cpf_novo(): void
+    {
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678901',
+            'renda_mensal' => 3000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ];
+
+        $analise = app(AnaliseCreditoService::class)->criarPendente($dados);
+
+        $this->assertSame(StatusAnalise::PENDENTE, $analise->status);
+        $this->assertNotNull($analise->cliente_id);
+
+        $this->assertDatabaseHas('clientes', [
+            'id' => $analise->cliente_id,
+            'nome' => $dados['nome'],
+            'cpf' => $dados['cpf'],
+            'renda_mensal' => $dados['renda_mensal'],
+            'email' => null,
+        ]);
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $analise->id,
+            'cliente_id' => $analise->cliente_id,
+            ...$dados,
+            'status' => 'pendente',
+            'score' => null,
+            'taxa_juros' => null,
+            'valor_parcela' => null,
+            'motivo_rejeicao' => null,
+        ]);
+
+        $this->assertDatabaseCount('clientes', 1);
+        $this->assertDatabaseCount('analises_credito', 1);
+    }
+
+    public function test_reutiliza_cliente_existente_ao_criar_analise_pendente(): void
+    {
+        $cadastro = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678901',
+            'email' => 'roberto@example.com',
+            'renda_mensal' => 3000,
+        ];
+
+        $cliente = Cliente::create($cadastro);
+
+        $dados = [
+            'nome' => 'Roberto Oliveira Silva',
+            'cpf' => $cliente->cpf,
+            'renda_mensal' => 4000,
+            'tipo_credito' => 'automotivo',
+            'valor_solicitado' => 5000,
+        ];
+
+        $analise = app(AnaliseCreditoService::class)->criarPendente($dados);
+
+        $this->assertSame($cliente->id, $analise->cliente_id);
+        $this->assertSame(StatusAnalise::PENDENTE, $analise->status);
+
+        $this->assertDatabaseHas('clientes', [
+            'id' => $cliente->id,
+            ...$cadastro,
+        ]);
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $analise->id,
+            'cliente_id' => $cliente->id,
+            ...$dados,
+            'status' => 'pendente',
+        ]);
+
+        $this->assertDatabaseCount('clientes', 1);
+        $this->assertDatabaseCount('analises_credito', 1);
     }
 
     /**
