@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Http\Requests\StoreClienteRequest;
+use App\Http\Requests\UpdateClienteRequest;
 use App\Models\Cliente;
 
 class ClienteController extends Controller
@@ -53,8 +53,9 @@ class ClienteController extends Controller
      */
     public function show($id)
     {
-        // TODO: Buscar e retornar o cliente pelo ID (retornar 404 se não encontrado).
-        return response()->json(['message' => 'Not implemented'], 501);
+        $cliente = Cliente::findOrFail($id);
+
+        return response()->json($cliente);
     }
 
     /**
@@ -66,10 +67,13 @@ class ClienteController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, $id)
+    public function update(UpdateClienteRequest $request, $id)
     {
-        // TODO: Validar os dados e atualizar o cliente (retornar 404 se não encontrado).
-        return response()->json(['message' => 'Not implemented'], 501);
+        $cliente = Cliente::findOrFail($id);
+
+        $cliente->update($request->validated());
+
+        return response()->json($cliente);
     }
 
     /**
