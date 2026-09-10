@@ -17,10 +17,10 @@ class ClienteController extends Controller
      */
     public function index()
     {
-        // TODO: Retornar a lista paginada de clientes.
-        return response()->json(['message' => 'Not implemented'], 501);
-    }
+        $clientes = Cliente::orderBy('id')->paginate(15);
 
+        return response()->json($clientes);
+    }
     /**
      * Cadastra um novo cliente.
      *
