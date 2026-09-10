@@ -31,9 +31,9 @@ class ClienteController extends Controller
      *  - cpf: obrigatório, 11 dígitos numéricos, único na tabela clientes
      *  - email: obrigatório, formato e-mail válido, único na tabela clientes
      *  - telefone: opcional, string
-     *  - renda_mensal: obrigatório, numérico, mínimo de 0
+     *  - renda_mensal: obrigatório, numérico, maior que zero
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Http\Requests\StoreClienteRequest  $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function store(StoreClienteRequest $request)
@@ -63,7 +63,7 @@ class ClienteController extends Controller
      *
      * PUT /api/clientes/{id}
      *
-     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Http\Requests\UpdateClienteRequest  $request
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
@@ -82,11 +82,14 @@ class ClienteController extends Controller
      * DELETE /api/clientes/{id}
      *
      * @param  int  $id
-     * @return \Illuminate\Http\JsonResponse
+     * @return \Illuminate\Http\Response
      */
     public function destroy($id)
     {
-        // TODO: Remover o cliente (retornar 404 se não encontrado, 204 No Content se removido).
-        return response()->json(['message' => 'Not implemented'], 501);
+        $cliente = Cliente::findOrFail($id);
+
+        $cliente->delete();
+
+        return response()->noContent();
     }
 }

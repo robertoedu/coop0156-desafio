@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use App\Models\Cliente;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class ClienteTest extends TestCase
 {
@@ -326,5 +327,103 @@ class ClienteTest extends TestCase
             ->assertJsonStructure(['message']);
 
         $this->assertDatabaseCount('clientes', 0);
+    }
+
+    public function test_remove_cliente_existente(): void
+    {
+        $cliente = Cliente::create([
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678901',
+            'email' => 'roberto@example.com',
+            'renda_mensal' => 3000,
+        ]);
+
+        $response = $this->deleteJson("/api/clientes/{$cliente->id}");
+
+        $response->assertNoContent();
+
+        $this->assertDatabaseMissing('clientes', [
+            'id' => $cliente->id,
+        ]);
+
+        $this->assertDatabaseCount('clientes', 0);
+    }
+
+    public function test_retorna_404_ao_remover_cliente_inexistente(): void
+    {
+        $response = $this->deleteJson('/api/clientes/999');
+
+        $response
+            ->assertNotFound()
+            ->assertJsonStructure(['message']);
+
+        $this->assertDatabaseCount('clientes', 0);
+    }
+
+    public static function dadosInvalidos(): array
+    {
+        return [
+            'cpf curto' => ['cpf', '1234567890'],
+            'cpf longo' => ['cpf', '123456789012'],
+            'cpf com letra' => ['cpf', '1234567890a'],
+            'cpf com pontuacao' => ['cpf', '123.456.789-01'],
+            'email invalido' => ['email', 'email-invalido'],
+            'renda zero' => ['renda_mensal', 0],
+            'renda negativa' => ['renda_mensal', -100],
+            'renda nao numerica' => ['renda_mensal', 'abc'],
+        ];
+    }
+
+    #[DataProvider('dadosInvalidos')]
+    public function test_rejeita_cadastro_com_dado_invalido(
+        string $campo,
+        mixed $valor,
+    ): void {
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678901',
+            'email' => 'roberto@example.com',
+            'renda_mensal' => 3000,
+        ];
+
+        $dados[$campo] = $valor;
+
+        $response = $this->postJson('/api/clientes', $dados);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([$campo]);
+
+        $this->assertDatabaseCount('clientes', 0);
+    }
+
+    #[DataProvider('dadosInvalidos')]
+    public function test_rejeita_atualizacao_com_dado_invalido(
+        string $campo,
+        mixed $valor,
+    ): void {
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678901',
+            'email' => 'roberto@example.com',
+            'renda_mensal' => 3000,
+        ];
+
+        $cliente = Cliente::create($dados);
+
+        $response = $this->putJson("/api/clientes/{$cliente->id}", [
+            $campo => $valor,
+        ]);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([$campo]);
+
+        $this->assertDatabaseHas('clientes', [
+            'id' => $cliente->id,
+            ...$dados,
+        ]);
+
+        $this->assertDatabaseCount('clientes', 1);
     }
 }
