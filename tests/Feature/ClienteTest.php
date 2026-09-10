@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 use App\Models\Cliente;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Illuminate\Database\QueryException;
 
 class ClienteTest extends TestCase
 {
@@ -425,5 +426,51 @@ class ClienteTest extends TestCase
         ]);
 
         $this->assertDatabaseCount('clientes', 1);
+    }
+
+    public function test_permite_clientes_sem_email_no_banco(): void
+    {
+        $primeiro = Cliente::create([
+            'nome' => 'Primeiro Cliente',
+            'cpf' => '12345678901',
+            'renda_mensal' => 3000,
+        ]);
+
+        $segundo = Cliente::create([
+            'nome' => 'Segundo Cliente',
+            'cpf' => '12345678902',
+            'renda_mensal' => 4000,
+        ]);
+
+        $this->assertDatabaseHas('clientes', [
+            'id' => $primeiro->id,
+            'email' => null,
+        ]);
+
+        $this->assertDatabaseHas('clientes', [
+            'id' => $segundo->id,
+            'email' => null,
+        ]);
+
+        $this->assertDatabaseCount('clientes', 2);
+    }
+
+    public function test_banco_rejeita_email_duplicado(): void
+    {
+        Cliente::create([
+            'nome' => 'Primeiro Cliente',
+            'cpf' => '12345678901',
+            'email' => 'cliente@example.com',
+            'renda_mensal' => 3000,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        Cliente::create([
+            'nome' => 'Segundo Cliente',
+            'cpf' => '12345678902',
+            'email' => 'cliente@example.com',
+            'renda_mensal' => 4000,
+        ]);
     }
 }
