@@ -461,6 +461,150 @@ class AnaliseCreditoTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_reprova_analise_por_score_baixo(): void
+    {
+        Http::preventStrayRequests();
+
+        Http::fake([
+            '*' => Http::response(['score' => 399], 200),
+        ]);
+
+        $response = $this->postJson('/api/analise-credito', [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678901',
+            'renda_mensal' => 5000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 1000,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('status', 'reprovado')
+            ->assertJsonPath('score', 399)
+            ->assertJsonPath(
+                'motivo_rejeicao',
+                'Score de crédito muito baixo'
+            );
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $response->json('id'),
+            'status' => 'reprovado',
+            'score' => 399,
+            'motivo_rejeicao' => 'Score de crédito muito baixo',
+            'taxa_juros' => null,
+            'valor_parcela' => null,
+        ]);
+
+        Http::assertSentCount(1);
+    }
+
+    public static function faixasDeScore(): array
+    {
+        return [
+            'inicio da faixa media' => [400, '4.50', '641.67'],
+            'fim da faixa media' => [699, '4.50', '641.67'],
+            'inicio da faixa alta' => [700, '2.90', '561.67'],
+            'score alto' => [850, '2.90', '561.67'],
+        ];
+    }
+
+    #[DataProvider('faixasDeScore')]
+    public function test_calcula_taxa_e_parcela_por_score(
+        int $score,
+        string $taxaEsperada,
+        string $parcelaEsperada,
+    ): void {
+        Http::preventStrayRequests();
+
+        Http::fake([
+            '*' => Http::response(['score' => $score], 200),
+        ]);
+
+        $response = $this->postJson('/api/analise-credito', [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678903',
+            'renda_mensal' => 5000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('status', 'aprovado')
+            ->assertJsonPath('motivo_rejeicao', null)
+            ->assertJsonPath('taxa_juros', $taxaEsperada)
+            ->assertJsonPath('valor_parcela', $parcelaEsperada);
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $response->json('id'),
+            'score' => $score,
+            'taxa_juros' => $taxaEsperada,
+            'valor_parcela' => $parcelaEsperada,
+            'status' => 'aprovado',
+            'motivo_rejeicao' => null,
+        ]);
+    }
+
+    public static function limitesDeComprometimento(): array
+    {
+        return [
+            'abaixo do limite' => [
+                4675.20,
+                '599.98',
+                'aprovado',
+                null,
+            ],
+            'no limite' => [
+                4675.32,
+                '600.00',
+                'aprovado',
+                null,
+            ],
+            'acima do limite' => [
+                4675.44,
+                '600.01',
+                'reprovado',
+                'Comprometimento de renda superior a 30%',
+            ],
+        ];
+    }
+
+    #[DataProvider('limitesDeComprometimento')]
+    public function test_decide_analise_pelo_comprometimento_de_renda(
+        float $valorSolicitado,
+        string $parcelaEsperada,
+        string $statusEsperado,
+        ?string $motivoEsperado,
+    ): void {
+        Http::preventStrayRequests();
+
+        Http::fake([
+            '*' => Http::response(['score' => 550], 200),
+        ]);
+
+        $response = $this->postJson('/api/analise-credito', [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678902',
+            'renda_mensal' => 2000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => $valorSolicitado,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('status', $statusEsperado)
+            ->assertJsonPath('valor_parcela', $parcelaEsperada)
+            ->assertJsonPath('motivo_rejeicao', $motivoEsperado);
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $response->json('id'),
+            'status' => $statusEsperado,
+            'taxa_juros' => '4.50',
+            'valor_parcela' => $parcelaEsperada,
+            'motivo_rejeicao' => $motivoEsperado,
+        ]);
+    }
+
     /**
      * DICA PARA O CANDIDATO:
      * Crie aqui testes adicionais para cobrir os fluxos de sucesso e erro:

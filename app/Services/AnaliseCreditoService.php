@@ -58,6 +58,44 @@ class AnaliseCreditoService
             return $analise;
         }
 
+        if ($score < 400) {
+            $analise->update([
+                'status' => StatusAnalise::REPROVADO,
+                'motivo_rejeicao' => 'Score de crédito muito baixo',
+            ]);
+
+            return $analise;
+        }
+
+        $taxa = $score < 700 ? 4.5 : 2.9;
+
+        $valorSolicitado = (float) $analise->valor_solicitado;
+
+        $juros = $valorSolicitado * ($taxa / 100) * 12;
+        $valorTotal = $valorSolicitado + $juros;
+        $valorParcela = round($valorTotal / 12, 2);
+
+        $analise->update([
+            'taxa_juros' => $taxa,
+            'valor_parcela' => $valorParcela,
+        ]);
+
+        $limiteParcela = (float) $analise->renda_mensal * 0.30;
+
+        if ($valorParcela > $limiteParcela) {
+            $analise->update([
+                'status' => StatusAnalise::REPROVADO,
+                'motivo_rejeicao' => 'Comprometimento de renda superior a 30%',
+            ]);
+
+            return $analise;
+        }
+
+        $analise->update([
+            'status' => StatusAnalise::APROVADO,
+            'motivo_rejeicao' => null,
+        ]);
+
         return $analise;
     }
     public function criarPendente(array $dados): AnaliseCredito
