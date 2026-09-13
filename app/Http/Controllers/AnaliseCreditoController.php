@@ -2,6 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\BureauIndisponivelException;
+use App\Services\AnaliseCreditoService;
+use Illuminate\Http\Client\ConnectionException;
+
 use App\Http\Requests\SolicitarAnaliseCreditoRequest;
 
 class AnaliseCreditoController extends Controller
@@ -29,10 +33,24 @@ class AnaliseCreditoController extends Controller
      * @param  \App\Http\Requests\SolicitarAnaliseCreditoRequest  $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function solicitar(SolicitarAnaliseCreditoRequest $request)
-    {
-        // TODO: Implementar consulta ao Bureau e regras de análise.
-        return response()->json(['message' => 'Not implemented'], 501);
+    public function solicitar(
+        SolicitarAnaliseCreditoRequest $request,
+        AnaliseCreditoService $service,
+    ) {
+        try {
+            $analise = $service->solicitar($request->validated());
+        } catch (BureauIndisponivelException $exception) {
+            $statusHttp = $exception->getPrevious() instanceof ConnectionException
+                ? 503
+                : 502;
+
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'analise_id' => $exception->analiseId,
+            ], $statusHttp);
+        }
+
+        return response()->json($analise, 201);
     }
 
     /**

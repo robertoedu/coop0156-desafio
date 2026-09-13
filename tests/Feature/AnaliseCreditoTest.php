@@ -8,30 +8,15 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use App\Enums\StatusAnalise;
 use App\Models\Cliente;
 use App\Services\AnaliseCreditoService;
+use App\Exceptions\BureauIndisponivelException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\ConnectionException;
+use UnexpectedValueException;
 
 class AnaliseCreditoTest extends TestCase
 {
     use RefreshDatabase;
-
-    /**
-     * Teste inicial guiado: Verifica que a rota de solicitação de análise
-     * de crédito retorna o status HTTP 501 (Not Implemented) por padrão.
-     *
-     * O candidato deve adaptar ou reescrever este teste para validar
-     * o fluxo correto após implementar a solução.
-     */
-    public function test_rota_solicitar_analise_retorna_stub_nao_implementado(): void
-    {
-        $response = $this->postJson('/api/analise-credito', [
-            'cpf' => '12345678901',
-            'nome' => 'João da Silva',
-            'renda_mensal' => 3000.00,
-            'tipo_credito' => 'pessoal',
-            'valor_solicitado' => 5000.00,
-        ]);
-
-        $response->assertStatus(501);
-    }
 
     public function test_rejeita_solicitacao_sem_campos_obrigatorios(): void
     {
@@ -168,6 +153,312 @@ class AnaliseCreditoTest extends TestCase
 
         $this->assertDatabaseCount('clientes', 1);
         $this->assertDatabaseCount('analises_credito', 1);
+    }
+
+    public function test_preserva_analise_pendente_quando_bureau_retorna_500(): void
+    {
+        Http::preventStrayRequests();
+
+        Http::fake([
+            '*' => Http::response([
+                'error' => 'Falha no provedor de score.',
+            ], 500),
+        ]);
+
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678904',
+            'renda_mensal' => 3000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ];
+
+        try {
+            app(AnaliseCreditoService::class)->solicitar($dados);
+
+            $this->fail('Era esperada uma falha na consulta ao Bureau.');
+        } catch (BureauIndisponivelException $exception) {
+            $this->assertInstanceOf(
+                RequestException::class,
+                $exception->getPrevious(),
+            );
+
+            $cliente = Cliente::where('cpf', $dados['cpf'])->firstOrFail();
+
+            $this->assertDatabaseHas('analises_credito', [
+                'id' => $exception->analiseId,
+                'cliente_id' => $cliente->id,
+                ...$dados,
+                'status' => 'pendente',
+                'score' => null,
+                'taxa_juros' => null,
+                'valor_parcela' => null,
+                'motivo_rejeicao' => null,
+            ]);
+
+            $this->assertDatabaseCount('clientes', 1);
+            $this->assertDatabaseCount('analises_credito', 1);
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_persiste_score_recebido_do_bureau(): void
+    {
+        Http::preventStrayRequests();
+
+        Http::fake([
+            '*' => Http::response([
+                'cpf' => '12345678903',
+                'score' => 850,
+            ], 200),
+        ]);
+
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678903',
+            'renda_mensal' => 5000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ];
+
+        $analise = app(AnaliseCreditoService::class)->solicitar($dados);
+
+        $this->assertSame(850, $analise->score);
+
+        $this->assertDatabaseHas('clientes', [
+            'id' => $analise->cliente_id,
+            'cpf' => $dados['cpf'],
+            'email' => null,
+        ]);
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $analise->id,
+            'cliente_id' => $analise->cliente_id,
+            ...$dados,
+            'score' => 850,
+        ]);
+
+        $this->assertDatabaseCount('clientes', 1);
+        $this->assertDatabaseCount('analises_credito', 1);
+
+        Http::assertSentCount(1);
+    }
+
+    public static function falhasDoBureau(): array
+    {
+        return [
+            'falha de conexao' => [
+                'conexao',
+                ConnectionException::class,
+            ],
+            'resposta sem score' => [
+                'sem_score',
+                UnexpectedValueException::class,
+            ],
+        ];
+    }
+
+    #[DataProvider('falhasDoBureau')]
+    public function test_preserva_analise_pendente_nas_demais_falhas_do_bureau(
+        string $cenario,
+        string $excecaoEsperada,
+    ): void {
+        Http::preventStrayRequests();
+
+        if ($cenario === 'conexao') {
+            Http::fake([
+                '*' => Http::failedConnection(),
+            ]);
+        } else {
+            Http::fake([
+                '*' => Http::response([
+                    'status_bureau' => 'ok',
+                ], 200),
+            ]);
+        }
+
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678905',
+            'renda_mensal' => 3000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ];
+
+        try {
+            app(AnaliseCreditoService::class)->solicitar($dados);
+
+            $this->fail('Era esperada uma falha na consulta ao Bureau.');
+        } catch (BureauIndisponivelException $exception) {
+            $this->assertInstanceOf(
+                $excecaoEsperada,
+                $exception->getPrevious(),
+            );
+
+            $cliente = Cliente::where('cpf', $dados['cpf'])->firstOrFail();
+
+            $this->assertDatabaseHas('analises_credito', [
+                'id' => $exception->analiseId,
+                'cliente_id' => $cliente->id,
+                ...$dados,
+                'status' => 'pendente',
+                'score' => null,
+                'taxa_juros' => null,
+                'valor_parcela' => null,
+                'motivo_rejeicao' => null,
+            ]);
+
+            $this->assertDatabaseCount('clientes', 1);
+            $this->assertDatabaseCount('analises_credito', 1);
+        }
+    }
+
+    public function test_solicita_analise_pela_api(): void
+    {
+        Http::preventStrayRequests();
+
+        Http::fake([
+            '*' => Http::response([
+                'score' => 850,
+            ], 200),
+        ]);
+
+        $response = $this->postJson('/api/analise-credito', [
+            'cpf' => '12345678903',
+            'nome' => 'João da Silva',
+            'renda_mensal' => 5000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('score', 850)
+            ->assertJsonStructure(['id', 'cliente_id']);
+
+        $cliente = Cliente::where('cpf', '12345678903')->firstOrFail();
+
+        $response->assertJsonPath('cliente_id', $cliente->id);
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $response->json('id'),
+            'cliente_id' => $cliente->id,
+            'score' => 850,
+        ]);
+
+        $this->assertDatabaseCount('clientes', 1);
+        $this->assertDatabaseCount('analises_credito', 1);
+
+        Http::assertSentCount(1);
+    }
+
+    public static function falhasDoBureauNaApi(): array
+    {
+        return [
+            'erro HTTP' => [
+                'http',
+                502,
+                'Não foi possível consultar o Bureau de crédito.',
+            ],
+            'falha de conexao' => [
+                'conexao',
+                503,
+                'Bureau de crédito indisponível no momento.',
+            ],
+            'resposta sem score' => [
+                'sem_score',
+                502,
+                'O Bureau retornou uma resposta inválida.',
+            ],
+        ];
+    }
+
+    #[DataProvider('falhasDoBureauNaApi')]
+    public function test_retorna_erro_controlado_quando_bureau_falha(
+        string $cenario,
+        int $statusEsperado,
+        string $mensagemEsperada,
+    ): void {
+        Http::preventStrayRequests();
+
+        $respostaBureau = match ($cenario) {
+            'http' => Http::response(['error' => 'Falha interna'], 500),
+            'conexao' => Http::failedConnection(),
+            'sem_score' => Http::response(['status_bureau' => 'ok'], 200),
+        };
+
+        Http::fake([
+            '*' => $respostaBureau,
+        ]);
+
+        $dados = [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678904',
+            'renda_mensal' => 3000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ];
+
+        $response = $this->postJson('/api/analise-credito', $dados);
+
+        $response
+            ->assertStatus($statusEsperado)
+            ->assertJsonPath('message', $mensagemEsperada)
+            ->assertJsonStructure(['analise_id']);
+
+        $this->assertIsInt($response->json('analise_id'));
+
+        $cliente = Cliente::where('cpf', $dados['cpf'])->firstOrFail();
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $response->json('analise_id'),
+            'cliente_id' => $cliente->id,
+            ...$dados,
+            'status' => 'pendente',
+            'score' => null,
+            'taxa_juros' => null,
+            'valor_parcela' => null,
+            'motivo_rejeicao' => null,
+        ]);
+
+        $this->assertDatabaseCount('clientes', 1);
+        $this->assertDatabaseCount('analises_credito', 1);
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_reprova_analise_por_renda_insuficiente(): void
+    {
+        Http::preventStrayRequests();
+
+        Http::fake([
+            '*' => Http::response(['score' => 850], 200),
+        ]);
+
+        $response = $this->postJson('/api/analise-credito', [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '12345678903',
+            'renda_mensal' => 1499.99,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 1000,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('status', 'reprovado')
+            ->assertJsonPath('motivo_rejeicao', 'Renda mínima insuficiente');
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $response->json('id'),
+            'status' => 'reprovado',
+            'score' => 850,
+            'motivo_rejeicao' => 'Renda mínima insuficiente',
+            'taxa_juros' => null,
+            'valor_parcela' => null,
+        ]);
+
+        Http::assertSentCount(1);
     }
 
     /**
