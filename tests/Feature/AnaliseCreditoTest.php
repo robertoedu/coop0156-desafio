@@ -12,6 +12,7 @@ use App\Exceptions\BureauIndisponivelException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\ConnectionException;
+use App\Models\AnaliseCredito;
 use UnexpectedValueException;
 
 class AnaliseCreditoTest extends TestCase
@@ -603,6 +604,96 @@ class AnaliseCreditoTest extends TestCase
             'valor_parcela' => $parcelaEsperada,
             'motivo_rejeicao' => $motivoEsperado,
         ]);
+    }
+
+    public function test_contrata_analise_aprovada(): void
+    {
+        Http::fake([
+            '*' => Http::response(['score' => 850], 200),
+        ]);
+
+        $solicitacao = $this->postJson('/api/analise-credito', [
+            'nome' => 'Roberto Oliveira',
+            'cpf' => '01234567893',
+            'renda_mensal' => 5000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+        ]);
+
+        $solicitacao
+            ->assertCreated()
+            ->assertJsonPath('status', 'aprovado');
+
+        $id = $solicitacao->json('id');
+
+        $response = $this->postJson(
+            "/api/analise-credito/{$id}/contratar"
+        );
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('analise.id', $id)
+            ->assertJsonPath('analise.status', 'contratado');
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $id,
+            'status' => 'contratado',
+        ]);
+
+        $this->assertDatabaseCount('analises_credito', 1);
+    }
+
+    public function test_retorna_404_ao_contratar_analise_inexistente(): void
+    {
+        $response = $this->postJson(
+            '/api/analise-credito/999/contratar'
+        );
+
+        $response->assertNotFound();
+
+        $this->assertDatabaseCount('analises_credito', 0);
+    }
+
+    #[DataProvider('statusQueNaoPermitemContratacao')]
+    public function test_rejeita_contratacao_de_analise_nao_aprovada(
+        string $status,
+    ): void {
+        $analise = AnaliseCredito::create([
+            'nome' => 'Cliente Teste',
+            'cpf' => '01234567893',
+            'renda_mensal' => 5000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+            'status' => $status,
+        ]);
+
+        $response = $this->postJson(
+            "/api/analise-credito/{$analise->id}/contratar"
+        );
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'message',
+                'Somente análises aprovadas podem ser contratadas.'
+            );
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $analise->id,
+            'status' => $status,
+        ]);
+
+        $this->assertDatabaseCount('analises_credito', 1);
+    }
+
+    public static function statusQueNaoPermitemContratacao(): array
+    {
+        return [
+            'pendente' => ['pendente'],
+            'reprovado' => ['reprovado'],
+            'processando contratacao' => ['processando_contratacao'],
+            'ja contratado' => ['contratado'],
+        ];
     }
 
     /**
