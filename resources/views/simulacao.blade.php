@@ -153,6 +153,12 @@
                         <p class="text-xs text-slate-500">Parcelas</p>
                         <p class="font-medium text-slate-200">12x fixas</p>
                     </div>
+                    <div>
+                        <p class="text-xs text-slate-500">Valor Total a Pagar</p>
+                        <p class="font-semibold text-slate-100 text-lg">
+                            R$ {{ number_format($valorTotal, 2, ',', '.') }}
+                        </p>
+                    </div>
                     <div class="pt-3 border-t border-panelBorder">
                         <p class="text-xs text-slate-500">Valor Estimado da Parcela</p>
                         <p class="text-2xl font-bold text-white mt-1">

@@ -8,6 +8,7 @@ use App\Models\Cliente;
 use App\Exceptions\BureauIndisponivelException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Validation\ValidationException;
 use UnexpectedValueException;
 
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,7 @@ class AnaliseCreditoService
 
     public function __construct(
         private readonly BureauService $bureau,
+        private readonly CalculoCreditoService $calculo,
     ) {}
 
     public function solicitar(array $dados): AnaliseCredito
@@ -71,8 +73,7 @@ class AnaliseCreditoService
 
         $valorSolicitado = (float) $analise->valor_solicitado;
 
-        $juros = $valorSolicitado * ($taxa / 100) * 12;
-        $valorTotal = $valorSolicitado + $juros;
+        $valorTotal = $this->calculo->calcularTotal($valorSolicitado, $taxa);
         $valorParcela = round($valorTotal / 12, 2);
 
         $analise->update([
@@ -98,6 +99,7 @@ class AnaliseCreditoService
 
         return $analise;
     }
+
     public function criarPendente(array $dados): AnaliseCredito
     {
         return DB::transaction(function () use ($dados) {
@@ -118,5 +120,22 @@ class AnaliseCreditoService
                 'status' => StatusAnalise::PENDENTE,
             ]);
         });
+    }
+
+    public function contratar(int $id): AnaliseCredito
+    {
+        $analise = AnaliseCredito::findOrFail($id);
+
+        if ($analise->status !== StatusAnalise::APROVADO) {
+            throw ValidationException::withMessages([
+                'analise' => 'Somente análises aprovadas podem ser contratadas.',
+            ]);
+        }
+
+        $analise->update([
+            'status' => StatusAnalise::CONTRATADO,
+        ]);
+
+        return $analise;
     }
 }

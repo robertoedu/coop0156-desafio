@@ -5,8 +5,6 @@ namespace App\Http\Controllers;
 use App\Exceptions\BureauIndisponivelException;
 use App\Services\AnaliseCreditoService;
 use Illuminate\Http\Client\ConnectionException;
-use App\Enums\StatusAnalise;
-use App\Models\AnaliseCredito;
 
 use App\Http\Requests\SolicitarAnaliseCreditoRequest;
 
@@ -73,19 +71,9 @@ class AnaliseCreditoController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
-    public function contratar($id)
+    public function contratar($id, AnaliseCreditoService $service)
     {
-        $analise = AnaliseCredito::findOrFail($id);
-
-        if ($analise->status !== StatusAnalise::APROVADO) {
-            return response()->json([
-                'message' => 'Somente análises aprovadas podem ser contratadas.',
-            ], 422);
-        }
-
-        $analise->update([
-            'status' => StatusAnalise::CONTRATADO,
-        ]);
+        $analise = $service->contratar($id);
 
         return response()->json([
             'message' => 'Contratação realizada com sucesso.',

@@ -96,6 +96,11 @@
             </h2>
 
             <form id="form-analise" class="space-y-6">
+                @if (session('erro'))
+                    <div role="alert" class="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 text-sm">
+                        {{ session('erro') }}
+                    </div>
+                @endif
                 <div id="erro-analise" role="alert"
                     class="hidden bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 text-sm whitespace-pre-line">
                 </div>

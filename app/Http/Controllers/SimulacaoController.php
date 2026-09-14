@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AnaliseCredito;
 use App\Enums\StatusAnalise;
-use Illuminate\Http\Request;
+use App\Services\CalculoCreditoService;
 
 class SimulacaoController extends Controller
 {
@@ -16,7 +16,7 @@ class SimulacaoController extends Controller
      * @param  int  $id
      * @return \Illuminate\View\View|\Illuminate\Http\RedirectResponse
      */
-    public function show($id)
+    public function show($id, CalculoCreditoService $calculo)
     {
         $analise = AnaliseCredito::findOrFail($id);
 
@@ -25,6 +25,11 @@ class SimulacaoController extends Controller
             return redirect('/')->with('erro', 'Esta análise não está disponível para simulação.');
         }
 
-        return view('simulacao', compact('analise'));
+        $valorTotal = $calculo->calcularTotal(
+            (float) $analise->valor_solicitado,
+            (float) $analise->taxa_juros,
+        );
+
+        return view('simulacao', compact('analise', 'valorTotal'));
     }
 }

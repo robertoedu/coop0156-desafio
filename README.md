@@ -1,276 +1,261 @@
-# Desafio Técnico: Sistema de Análise de Crédito Cooperativo (Coop0156)
+# Coop0156 — Análise de Crédito Cooperativo
 
-Seja bem-vindo ao desafio técnico para a vaga de desenvolvedor PHP/Laravel. Este desafio foi estruturado para avaliar sua capacidade de lidar com integração de APIs, regras de negócio, organização de código e testes automatizados de forma prática e realista.
+Implementação do desafio técnico em Laravel: cadastro de clientes pela API, análise de crédito com consulta a um Bureau simulado, apresentação das condições e contratação de análises aprovadas.
 
----
+O enunciado original foi preservado em [DESAFIO.md](DESAFIO.md).
 
-## 📌 Contexto do Domínio
+## Implementado
 
-Você está trabalhando no desenvolvimento da **Coop0156**, uma plataforma interna de uma cooperativa para cadastro de clientes, simulação e contratação de crédito.
+- CRUD de clientes com paginação, Form Requests, validação, unicidade de CPF/e-mail, atualização parcial e exclusão.
+- Cadastro automático ou reutilização do cliente pelo CPF durante a solicitação de crédito.
+- Registro da análise pendente vinculada ao cliente antes de consultar o Bureau.
+- Consulta via HTTP com URL e timeout configuráveis e tratamento de falhas.
+- Regras de renda mínima, score, juros simples e comprometimento de renda.
+- JavaScript da tela inicial: envio, resultado, mensagens de erro, máscara de CPF e acesso à simulação.
+- Simulação com taxa, total, parcelas e confirmação de contratação.
+- Contratação síncrona: somente análises aprovadas passam para `contratado`.
+- Testes automatizados das APIs, integração e respostas das páginas de simulação.
 
-O fluxo completo do sistema consiste em:
+O HTML/CSS, as rotas, models, enums e a estrutura inicial de banco vieram do scaffold. A implementação foi feita sobre essa base. O mock do Bureau foi mantido.
 
-1. **Cadastrar** um cliente na plataforma (CRUD completo).
-2. **Solicitar uma análise de crédito** para um cliente, consultando um Bureau de Crédito externo para obter o Score.
-3. **Aplicar regras de elegibilidade** (renda mínima, faixas de score com taxa de juros, comprometimento de renda).
-4. **Visualizar a simulação** das condições (parcelas, taxa, valor total) em uma tela dedicada.
-5. **Confirmar a contratação** do crédito aprovado.
+## Ambiente utilizado
 
----
+Windows, PowerShell, PHP 8.5.10, Composer e SQLite, sem Docker.
 
-## 🛠️ O Que Foi Entregue (Scaffold)
+Optei por usar PHP local devido às limitações de recursos da minha máquina pessoal, que também utilizo para executar outros projetos. Essa abordagem é permitida pelo enunciado e possibilitou desenvolver e testar a aplicação sem o consumo adicional de recursos do Docker. Para este desafio, utilizei uma instalação separada do PHP, selecionada pelo PATH de cada terminal, preservando as instalações utilizadas pelos demais projetos.
 
-Para otimizar o seu tempo, as estruturas básicas já estão prontas:
+Embora o `composer.json` declare PHP `^8.3`, as dependências registradas no `composer.lock` exigem **PHP 8.4.1 ou superior**. PHP 8.2 e 8.3 não atendem ao lock atual. A versão efetivamente validada foi PHP 8.5.10.
 
-1. **Interface (Frontend):** View Blade pré-estilizada em `resources/views/analise.blade.php` (tela inicial) e `resources/views/simulacao.blade.php` (tela de simulação). O HTML/CSS está pronto — **o candidato implementa o JavaScript**.
-2. **Rotas:**
-   - `routes/api.php` com as rotas do CRUD de clientes (`apiResource`) e as rotas de análise de crédito.
-   - `routes/web.php` com as rotas Web da interface visual (`/` e `/simulacao/{id}`).
-3. **Configuração do Bureau:** URL e timeout da API externa configurados em `config/services.php` via variáveis de ambiente no `.env`.
-4. **Migrations:**
-   - `create_analises_credito_table` — estrutura da tabela de análises.
-   - `create_clientes_table` — estrutura da tabela de clientes, já com a chave estrangeira vinculando as análises.
-5. **Models:** `Cliente` (com relacionamento `hasMany` de análises) e `AnaliseCredito` (com `belongsTo` de cliente), com Enums `StatusAnalise` e `TipoCredito` mapeados.
-6. **Controllers Stub:** `ClienteController` (CRUD completo a implementar) e `AnaliseCreditoController` (análise e contratação a implementar).
-7. **Bureau API Mock:** Rota interna `/api/mock/bureau/{cpf}` que simula o Bureau externo — **não alterar**.
+Use `composer install` para instalar as versões do lock. Docker/Sail não foi validado.
 
----
+### Configuração do PHP
 
-## 🚀 O Que Você Precisa Implementar
+Confira o PHP utilizado pelo terminal e pelo Composer:
 
-O desafio está dividido em 4 etapas obrigatórias + 1 diferencial:
-
----
-
-### 1. CRUD de Clientes
-
-Implemente o `ClienteController` com as 5 operações do CRUD de forma completa e com boas práticas:
-
-- **`GET /api/clientes`** — Lista paginada de clientes.
-- **`POST /api/clientes`** — Cria um novo cliente com validação dos campos:
-  - `nome`: obrigatório
-  - `cpf`: obrigatório, exatamente 11 dígitos numéricos, único
-  - `email`: obrigatório, formato válido, único
-  - `telefone`: opcional
-  - `renda_mensal`: obrigatório, numérico positivo
-- **`GET /api/clientes/{id}`** — Exibe um cliente (404 se não encontrado).
-- **`PUT /api/clientes/{id}`** — Atualiza um cliente com validação.
-- **`DELETE /api/clientes/{id}`** — Remove um cliente (204 em sucesso).
-
-**Boas práticas esperadas:** validações com Form Request, retorno de erros claros, código limpo e organizado.
-
----
-
-### 2. Integração com o Bureau e Regras de Negócio
-
-Implemente o método `solicitar` do `AnaliseCreditoController`:
-
-**Fluxo esperado:**
-1. Validar os dados de entrada.
-2. **Localizar ou cadastrar o cliente:** buscar pelo CPF informado. Se o cliente não existir, criá-lo automaticamente com os dados recebidos (`nome`, `cpf`, `renda_mensal`). Use `firstOrCreate` ou estratégia equivalente. A análise deve sempre estar vinculada a um `cliente_id` válido.
-3. Persistir a análise com status `pendente`, associada ao cliente.
-4. Consultar a API do Bureau via `Http::` do Laravel: `GET /api/mock/bureau/{cpf}`.
-5. Tratar os possíveis cenários de falha do Bureau (veja a seção de testes abaixo).
-6. Aplicar as regras de crédito e atualizar a análise no banco.
-
-> **Por que esse fluxo?** A interface não possui uma tela separada de cadastro de clientes — o foco do desafio está nas boas práticas de API REST e nas regras de negócio. O CRUD de clientes (`ClienteController`) deve ser implementado e testado via testes automatizados, mas o cadastro em si é automatizado durante a solicitação de crédito.
-
-**Regras de crédito a implementar:**
-
-| Condição | Resultado |
-|---|---|
-| Renda mensal < R$ 1.500,00 | Reprovado — `"Renda mínima insuficiente"` |
-| Score < 400 | Reprovado — `"Score de crédito muito baixo"` |
-| Score entre 400 e 699 | Aprovado — taxa de **4,5% ao mês** |
-| Score ≥ 700 | Aprovado — taxa de **2,9% ao mês** |
-| Parcela > 30% da renda mensal | Reprovado — `"Comprometimento de renda superior a 30%"` |
-
-**Cálculo da parcela:**
-O crédito é dividido em **12 parcelas fixas**, com juros simples aplicados sobre o valor solicitado.
-
-**Exemplo:** para um valor solicitado de R$ 10.000,00 com taxa de 2,9% ao mês:
-- Juros totais: `10.000 × 2,9% × 12 = R$ 3.480,00`
-- Valor total a pagar: `10.000 + 3.480 = R$ 13.480,00`
-- Parcela: `13.480 / 12 = R$ 1.123,33`
-
-A parcela não pode ultrapassar 30% da renda mensal informada.
-
-> 💡 **Nota:** o cálculo financeiro em si não é o foco de avaliação deste desafio — é apenas a regra de negócio de exemplo do domínio. Pequenas variações de arredondamento ou de fórmula não serão penalizadas, desde que a aplicação das faixas de score, renda mínima e comprometimento de renda esteja correta.
-
----
-
-### 3. Tela de Simulação e Contratação
-
-A tela de simulação (`/simulacao/{id}`) já está pronta visualmente. O candidato precisa:
-
-- **No frontend (`analise.blade.php`):** ao receber uma resposta **aprovada**, exibir o resultado e um link/botão que direcione o usuário para `/simulacao/{id}`.
-- **Na tela de simulação (`simulacao.blade.php`):** implementar o JavaScript do botão **"Confirmar Contratação"**, que deve disparar `POST /api/analise-credito/{id}/contratar`.
-- **No backend (`contratar`):** validar que a análise existe e está com status `aprovado`, atualizar para `contratado` e retornar sucesso.
-
----
-
-### 4. Testes Automatizados
-
-Os testes estão divididos em dois arquivos:
-
-#### `tests/Feature/AnaliseCreditoTest.php`
-
-Complete este arquivo com testes cobrindo:
-
-- Aprovação com score alto (taxa de 2,9%).
-- Aprovação com score médio (taxa de 4,5%).
-- Reprovação por renda insuficiente.
-- Reprovação por score baixo.
-- Reprovação por comprometimento de renda.
-- Falha da API do Bureau (HTTP 500): a aplicação deve retornar resposta limpa, sem crash.
-- Confirmação de contratação (`contratar`) com análise aprovada.
-- Criação automática do cliente ao solicitar análise com CPF novo.
-
-Use `Http::fake()` para simular as respostas do Bureau sem chamadas reais de rede.
-
-#### `tests/Feature/ClienteTest.php` _(criar este arquivo)_
-
-Crie e complete este arquivo cobrindo os endpoints do CRUD de clientes:
-
-- Criação de cliente com dados válidos (201).
-- Falha de validação ao criar cliente sem campos obrigatórios (422).
-- Falha ao criar cliente com CPF duplicado (422).
-- Falha ao criar cliente com e-mail duplicado (422).
-- Listagem paginada de clientes (200).
-- Exibição de cliente existente por ID (200).
-- Retorno 404 ao buscar cliente inexistente.
-- Atualização parcial de cliente existente (200).
-- Remoção de cliente existente (204 sem body).
-- Retorno 404 ao tentar remover cliente inexistente.
-
----
-
-### ⭐ Diferencial Opcional — Filas (Laravel Queues)
-
-Se quiser ir além, ao invés de atualizar o status para `contratado` diretamente no método `contratar`, implemente:
-
-1. Atualize o status para `processando_contratacao` e dispare o `ProcessarContratacaoJob` para a fila.
-2. No Job, finalize a contratação: atualize para `contratado` e registre um log de sucesso.
-3. Configure `QUEUE_CONNECTION=database` no `.env` e execute `php artisan queue:work` em um terminal separado.
-
----
-
-### ⭐ Diferencial Opcional — Vá Além
-
-Se sobrar tempo e você quiser mostrar mais do seu repertório, sinta-se à vontade para agregar valor ao projeto além do solicitado — por exemplo, uma tela de cadastro/listagem de clientes, melhorias de UX nas telas existentes, validações extras no frontend, etc. Não é obrigatório e não substitui nenhum dos itens obrigatórios acima, mas é visto como diferencial positivo.
-
----
-
-## 🧪 Comportamento da API Mock do Bureau
-
-A rota `/api/mock/bureau/{cpf}` responde baseada no **último dígito do CPF** (apenas números):
-
-| Último dígito do CPF | Retorno |
-|---|---|
-| `1` | Score **150** — útil para testar reprovação por score baixo |
-| `2` | Score **550** — útil para testar aprovação com taxa de 4,5% |
-| `3` | Score **850** — útil para testar aprovação com taxa de 2,9% |
-| `4` | **HTTP 500** — útil para testar resiliência a falha do Bureau |
-| `5` | **Delay de 5s** — útil para testar tratamento de timeout |
-| `6` | JSON **sem a chave `score`** — útil para testar resposta malformada |
-| Qualquer outro | Score **600** padrão |
-
----
-
-## 🚀 Como Executar o Projeto
-
-Você pode escolher entre duas abordagens abaixo. **A Opção A (Sail) é a recomendada** — é o ambiente usado na avaliação — mas a Opção B também é válida se preferir não usar Docker.
-
----
-
-### Opção A — Laravel Sail (Docker) — recomendada
-
-> Requisitos: Docker Desktop (ou Docker + Docker Compose) instalado e em execução.
-> No Windows, recomenda-se usar o WSL 2 com Docker integrado.
->
-> Como o `vendor/` não está versionado no repositório, é necessário instalar as dependências via Docker antes de subir o Sail (que também é instalado via Composer).
-
-```bash
-# 1. Instalar dependências via Docker (não requer PHP instalado localmente)
-docker run --rm -u "$(id -u):$(id -g)" \
-    -v "$(pwd):/var/www/html" \
-    -w /var/www/html \
-    laravelsail/php83-composer:latest \
-    composer install --ignore-platform-reqs
-
-# 2. Configurar o ambiente
-cp .env.example .env
-
-# 3. Subir os containers em background
-./vendor/bin/sail up -d
-
-# 4. Gerar a chave da aplicação e rodar as migrations
-./vendor/bin/sail artisan key:generate
-./vendor/bin/sail artisan migrate
-
-# Acesse: http://localhost
-
-# 5. Rodar os testes
-./vendor/bin/sail artisan test
-
-# ⭐ Opcional: Worker da fila (apenas se implementar o diferencial)
-./vendor/bin/sail artisan queue:work
-
-# Para encerrar os containers
-./vendor/bin/sail down
+```powershell
+php --version
+where.exe php
+composer --version
+php --ini
+php -m
 ```
 
----
+Se houver outra versão no PATH, coloque a pasta do PHP escolhido no início dele em cada terminal. Exemplo para uma instalação em `C:\tools\php85`:
 
-### Opção B — PHP local (sem Docker)
+```powershell
+$env:Path = 'C:\tools\php85;' + $env:Path
+```
 
-> Requisitos: PHP 8.2+, Composer.
-> O projeto já vem configurado com **SQLite** no `.env.example` — nenhuma instalação de banco de dados é necessária.
+Substitua o caminho pela sua instalação. Essa mudança vale somente para o terminal atual e é perdida ao fechá-lo.
 
-```bash
-# 1. Instalar dependências
+Na instalação ZIP do PHP para Windows, se não houver `php.ini`, copie `php.ini-development` para `php.ini` na pasta do PHP. Configure `extension_dir` e habilite estas extensões, removendo o `;` das linhas correspondentes quando necessário:
+
+```ini
+extension_dir = "C:\tools\php85\ext"
+extension=curl
+extension=fileinfo
+extension=mbstring
+extension=openssl
+extension=pdo_sqlite
+extension=zip
+```
+
+Adapte o caminho de `extension_dir`. Extensões básicas como PDO, DOM, XML e tokenizer também devem estar disponíveis. A verificação do Composer abaixo confere os requisitos das dependências. O driver `pdo_sqlite` permite ao Laravel acessar o SQLite sem instalar um servidor MySQL.
+
+## Instalação local
+
+Execute os comandos na raiz do projeto, pelo PowerShell, com PHP e Composer no PATH.
+
+### 1. Dependências
+
+```powershell
+composer check-platform-reqs --lock
 composer install
-
-# 2. Configurar o ambiente
-cp .env.example .env
-php artisan key:generate
-
-# 3. Criar o arquivo de banco SQLite e rodar as migrations
-touch database/database.sqlite
-php artisan migrate
-
-# 4. Iniciar o servidor
-php artisan serve
-# Acesse: http://localhost:8000
-
-# 5. Rodar os testes
-php artisan test
-
-# ⭐ Opcional: Worker da fila (apenas se implementar o diferencial)
-php artisan queue:work
 ```
 
----
+Se a verificação falhar, ajuste a versão do PHP ou as extensões. Não é necessário ignorar os requisitos de plataforma.
 
-## 📤 Como Entregar
+### 2. Arquivo de ambiente e chave
 
-1. Crie um **repositório público** (ou privado, dando acesso ao avaliador) no seu GitHub/GitLab pessoal com o código do desafio.
-2. Faça commits ao longo do desenvolvimento (evite um único commit gigante no final — o histórico de commits também é avaliado).
-3. Inclua no repositório um **README próprio** descrevendo o que foi realizado — quais etapas você implementou, o que ficou de fora (se houver) — e, se quiser, suas decisões técnicas e considerações sobre o desenvolvimento.
-4. Ao finalizar, envie o **link do repositório** por e-mail para **jonathan_peixoto@sicredi.com.br**, dentro do prazo combinado de uma semana.
+```powershell
+if (-not (Test-Path -LiteralPath '.env')) {
+    Copy-Item -LiteralPath '.env.example' -Destination '.env'
+}
+php artisan key:generate
+```
 
-## 📬 Dúvidas
+Gere a chave na instalação inicial; não é necessário gerar outra a cada execução.
 
-Surgiu alguma dúvida durante o desenvolvimento? Entre em contato pelo e-mail **jonathan_peixoto@sicredi.com.br**. Fique à vontade para perguntar sobre qualquer ponto do enunciado que não tenha ficado claro.
+O `.env.example` já contém:
 
----
+```dotenv
+APP_URL=http://localhost:8000
+DB_CONNECTION=sqlite
+SCORE_BUREAU_API_URL=http://127.0.0.1:8001/api/mock/bureau
+SCORE_BUREAU_TIMEOUT=3
+```
 
-## 🏆 Critérios de Avaliação
+Sem definir `DB_DATABASE`, o Laravel utiliza `database/database.sqlite`. Para seguir esse padrão, não configure `DB_URL` nem outro caminho em `DB_DATABASE`.
 
-1. **Boas práticas de API REST:** Validações, Form Requests, retorno de erros adequados, uso correto de HTTP status codes.
-2. **Organização do código:** Separação de responsabilidades — a lógica de negócio não deve ficar no Controller. Criação de Services ou Actions é recomendada.
-3. **Resiliência na integração HTTP:** Tratamento correto de timeouts e erros do Bureau — a aplicação não pode travar ou retornar erro 500 inesperado.
-4. **Qualidade dos testes:** Cobertura dos cenários relevantes, uso de `Http::fake()`, edge cases contemplados.
-5. **Consistência e clareza:** Nomenclatura consistente, uso consciente de recursos do framework, código limpo, commits descritivos e versionamento.
+### 3. Banco SQLite
 
-Boa sorte! Mostre-nos o seu melhor código. 🚀
+```powershell
+if (-not (Test-Path -LiteralPath 'database/database.sqlite')) {
+    New-Item -ItemType File -Path 'database/database.sqlite' | Out-Null
+}
+php artisan config:clear
+php artisan migrate
+```
+
+O arquivo SQLite guarda os dados locais. As migrations criam clientes, análises e tabelas auxiliares. Sessões e cache também usam banco na configuração fornecida. Não são necessários usuário, senha ou serviço separado de banco.
+
+### 4. Dois servidores
+
+Abra dois terminais na raiz do mesmo projeto, usando o PHP correto em ambos.
+
+**Terminal da aplicação:**
+
+```powershell
+php artisan serve --host=127.0.0.1 --port=8000
+```
+
+**Terminal do Bureau simulado:**
+
+```powershell
+php artisan serve --host=127.0.0.1 --port=8001
+```
+
+Acesse a aplicação em **http://127.0.0.1:8000**. A porta **8001** fica destinada às consultas ao mock.
+
+São usados dois processos porque o servidor PHP local no Windows atende uma requisição por vez. Consultar o Bureau no mesmo servidor ocupado pode causar timeout. Abra o formulário na porta 8000, mesmo que ele também esteja acessível na porta 8001.
+
+As views usam Tailwind e fontes por CDN. O fluxo atual não exige `npm install` nem build do Vite; esses recursos visuais dependem de acesso à internet.
+
+Use `Ctrl+C` em cada terminal para encerrar.
+
+## Teste manual
+
+| Campo | Exemplo |
+|---|---|
+| Nome | Cliente Teste |
+| CPF | `01234567893` |
+| Renda mensal | `5000` |
+| Tipo de crédito | Pessoal |
+| Valor solicitado | `5000` |
+
+O mock retorna score 850 para esse CPF. A análise deve ser aprovada com taxa de 2,9% ao mês, total de R$ 6.740,00 e parcela de R$ 561,67. Abra **Ver condições da simulação** e clique em **Confirmar Contratação**. A resposta deve conter `status: contratado`, e a página deve mostrar o modal de sucesso.
+
+O mock determina a resposta pelo último dígito do CPF:
+
+| Final | Resposta |
+|---|---|
+| 1 | Score 150 |
+| 2 | Score 550 |
+| 3 | Score 850 |
+| 4 | HTTP 500 |
+| 5 | Espera de 5 segundos, excedendo o timeout local de 3 segundos |
+| 6 | JSON sem score |
+| Demais | Score 600 |
+
+Após testar timeout, aguarde a requisição atrasada terminar antes de tentar novamente. Uma nova solicitação cria outra análise; não retoma a anterior.
+
+## Endpoints
+
+| Método | Rota | Comportamento |
+|---|---|---|
+| GET | `/api/clientes` | Paginação de 15 registros |
+| POST | `/api/clientes` | Cadastro, sucesso `201` |
+| GET | `/api/clientes/{id}` | Consulta, `404` se inexistente |
+| PUT/PATCH | `/api/clientes/{id}` | Atualização dos campos enviados |
+| DELETE | `/api/clientes/{id}` | Exclusão, `204` sem corpo |
+| POST | `/api/analise-credito` | Análise, sucesso `201`, inclusive quando reprovada pelas regras |
+| POST | `/api/analise-credito/{id}/contratar` | Contratação, sucesso `200` |
+| GET | `/simulacao/{id}` | Condições da análise aprovada |
+
+Nas chamadas à API, use `Accept: application/json` e, ao enviar JSON, `Content-Type: application/json`. Dados inválidos retornam `422`. A contratação retorna `404` para análise inexistente e `422` para status diferente de aprovado.
+
+O cadastro recebe `nome`, `cpf`, `email`, `telefone` opcional e `renda_mensal`. A análise recebe `nome`, `cpf`, `renda_mensal`, `tipo_credito` e `valor_solicitado`. Os tipos aceitos são `pessoal`, `imobiliario` e `automotivo`.
+
+## Regras e decisões
+
+### Crédito e arredondamento
+
+- Renda inferior a R$ 1.500: `Renda mínima insuficiente`.
+- Score inferior a 400: `Score de crédito muito baixo`.
+- Score de 400 a 699: taxa mensal de 4,5%.
+- Score a partir de 700: taxa mensal de 2,9%.
+- Parcela superior a 30% da renda: `Comprometimento de renda superior a 30%`.
+
+```text
+total = valor solicitado × (1 + taxa mensal / 100 × 12)
+parcela = arredondar(total / 12, 2)
+```
+
+A comparação com 30% utiliza a parcela arredondada para centavos; igualdade permite aprovação. O total exibido utiliza a fórmula antes de arredondar as parcelas, podendo diferir em centavos da soma das 12 parcelas arredondadas.
+
+O CRUD exige renda positiva. A solicitação de análise aceita renda zero na validação e a reprova pela regra de renda mínima.
+
+### E-mail e cadastro automático
+
+O scaffold exigia e-mail no banco, mas o cadastro automático não recebe esse campo. Após esclarecimento com o responsável pelo desafio, que autorizou decidir a abordagem, uma nova migration tornou o e-mail nullable, preservando sua unicidade quando informado.
+
+A API de cadastro de clientes continua exigindo e-mail válido e único. O cadastro automático utiliza `null`, sem inventar um endereço.
+
+Clientes existentes são reutilizados pelo CPF sem sobrescrever o cadastro. A análise guarda o nome e a renda recebidos naquela solicitação. O CRUD permite alterar CPF, respeitando formato e unicidade. A máscara é visual: a API recebe somente dígitos como string, preservando zeros iniciais. Não há validação de dígitos verificadores do CPF, pois o requisito é de formato e unicidade.
+
+### Exclusão e histórico
+
+A criação da análise sempre associa um cliente válido. Foi mantida a migration original: ao excluir o cliente, suas análises permanecem e `cliente_id` fica nulo por `nullOnDelete`. A exclusão retorna `204`; não foi acrescentado bloqueio para clientes com análises.
+
+### Falhas do Bureau
+
+Cliente e análise são criados em uma transação; a consulta HTTP ocorre depois dela. Se não for possível obter o score, a análise permanece pendente.
+
+| Falha | Resposta da aplicação |
+|---|---|
+| Erro HTTP do Bureau | `502`, mensagem controlada |
+| Timeout ou falha de conexão | `503`, mensagem de indisponibilidade |
+| Resposta sem score inteiro válido | `502`, mensagem de resposta inválida |
+
+As respostas incluem `analise_id`. O status pendente e os códigos `502`/`503` foram decisões de implementação; o enunciado exige tratamento de falhas, mas não determina esses detalhes. Não há retentativa nem reprocessamento automático.
+
+## Organização e melhorias adicionais
+
+| Componente | Responsabilidade |
+|---|---|
+| Form Requests | Validação de entrada |
+| Controllers | Receber chamadas e produzir respostas |
+| `AnaliseCreditoService` | Criação, regras de análise e contratação |
+| `BureauService` | Consulta HTTP e verificação do score |
+| `CalculoCreditoService` | Fórmula compartilhada do total |
+| Models e migrations | Persistência, relacionamentos e estrutura do banco |
+| Views e JavaScript | Formulário, resultado, simulação e confirmação |
+
+Os serviços são escolhas de organização para separar responsabilidades. A máscara de CPF, os testes adicionais dos limites e os testes da página de simulação complementam os itens explicitamente listados no desafio. A mensagem de redirecionamento de uma simulação indisponível é exibida na tela inicial.
+
+## Testes automatizados
+
+```powershell
+php artisan config:clear
+php artisan test
+```
+
+Os servidores 8000 e 8001 não precisam estar ligados para os testes: as consultas externas são simuladas com `Http::fake()`.
+
+O `phpunit.xml` configura SQLite em memória (`DB_DATABASE=:memory:`), sem `DB_URL`, sessões e cache em memória e fila síncrona. Os testes com persistência usam `RefreshDatabase`, isolando os cenários do arquivo SQLite usado manualmente.
+
+| Arquivo | Cobertura |
+|---|---|
+| `ClienteTest` | CRUD, validação, unicidade, paginação e e-mail nullable |
+| `AnaliseCreditoTest` | Cadastro automático, regras, limites, falhas do Bureau e contratação |
+| `BureauServiceTest` | Consulta HTTP e exceções da integração |
+| `SimulacaoTest` | Conteúdo da página, redirecionamento com mensagem e análise inexistente |
+
+`SimulacaoTest` verifica respostas HTML do Laravel; não executa JavaScript no navegador. O fluxo visual até a contratação também foi verificado manualmente.
+
+## O que ficou de fora
+
+- O diferencial de fila ainda não foi implementado. `ProcessarContratacaoJob` permanece como estrutura inicial, sem processamento. Apesar de `QUEUE_CONNECTION=database` no exemplo de ambiente, a contratação não dispara Jobs nem precisa de worker.
+- Não há tela separada de CRUD de clientes; as operações são oferecidas pela API, conforme permitido no desafio.
+- Não há envio de notificações. O texto original do modal menciona confirmação posterior, mas não foi implementado envio de e-mail ou mensagem.
+- Docker/Sail não foi validado. As instruções acima descrevem o ambiente local utilizado.
