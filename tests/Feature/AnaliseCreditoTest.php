@@ -13,6 +13,8 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Client\ConnectionException;
 use App\Models\AnaliseCredito;
+use App\Jobs\ProcessarContratacaoJob;
+use Illuminate\Support\Facades\Queue;
 use UnexpectedValueException;
 
 class AnaliseCreditoTest extends TestCase
@@ -606,14 +608,16 @@ class AnaliseCreditoTest extends TestCase
         ]);
     }
 
-    public function test_contrata_analise_aprovada(): void
+    public function test_envia_contratacao_aprovada_para_fila(): void
     {
+        Queue::fake();
+
         Http::fake([
             '*' => Http::response(['score' => 850], 200),
         ]);
 
         $solicitacao = $this->postJson('/api/analise-credito', [
-            'nome' => 'Roberto Oliveira',
+            'nome' => 'Cliente Teste',
             'cpf' => '01234567893',
             'renda_mensal' => 5000,
             'tipo_credito' => 'pessoal',
@@ -631,16 +635,24 @@ class AnaliseCreditoTest extends TestCase
         );
 
         $response
-            ->assertOk()
+            ->assertStatus(202)
             ->assertJsonPath('analise.id', $id)
-            ->assertJsonPath('analise.status', 'contratado');
+            ->assertJsonPath(
+                'analise.status',
+                'processando_contratacao'
+            );
 
         $this->assertDatabaseHas('analises_credito', [
             'id' => $id,
-            'status' => 'contratado',
+            'status' => 'processando_contratacao',
         ]);
 
-        $this->assertDatabaseCount('analises_credito', 1);
+        Queue::assertPushed(
+            ProcessarContratacaoJob::class,
+            fn(ProcessarContratacaoJob $job) => $job->analiseId === $id
+        );
+
+        Queue::assertPushed(ProcessarContratacaoJob::class, 1);
     }
 
     public function test_retorna_404_ao_contratar_analise_inexistente(): void
@@ -694,6 +706,36 @@ class AnaliseCreditoTest extends TestCase
             'processando contratacao' => ['processando_contratacao'],
             'ja contratado' => ['contratado'],
         ];
+    }
+
+    public function test_nao_envia_outro_job_ao_repetir_contratacao(): void
+    {
+        Queue::fake();
+
+        $analise = AnaliseCredito::create([
+            'nome' => 'Cliente Teste',
+            'cpf' => '01234567893',
+            'renda_mensal' => 5000,
+            'tipo_credito' => 'pessoal',
+            'valor_solicitado' => 5000,
+            'status' => 'aprovado',
+            'score' => 850,
+            'taxa_juros' => 2.9,
+            'valor_parcela' => 561.67,
+        ]);
+
+        $url = "/api/analise-credito/{$analise->id}/contratar";
+
+        $this->postJson($url)->assertStatus(202);
+
+        $this->postJson($url)->assertUnprocessable();
+
+        $this->assertDatabaseHas('analises_credito', [
+            'id' => $analise->id,
+            'status' => 'processando_contratacao',
+        ]);
+
+        Queue::assertPushed(ProcessarContratacaoJob::class, 1);
     }
 
     /**

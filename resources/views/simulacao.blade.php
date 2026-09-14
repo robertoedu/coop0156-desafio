@@ -243,12 +243,15 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                 </svg>
             </div>
-            <h3 class="text-2xl font-bold text-white mb-2">Contratação Realizada!</h3>
-            <p class="text-slate-400 text-sm mb-6">O crédito foi contratado com sucesso. Você receberá uma confirmação
-                em breve.</p>
+            <h3 class="text-2xl font-bold text-white mb-2">
+                Contratação em processamento
+            </h3>
+            <p class="text-slate-400 text-sm mb-6">
+                Sua solicitação foi recebida e está aguardando a conclusão do processamento.
+            </p>
             <div
                 class="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-3 mb-6 text-xs text-emerald-400 font-mono">
-                Status: CONTRATADO
+                Status: Processando Contratação
             </div>
             <a href="/"
                 class="inline-block px-8 py-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 rounded-xl text-sm font-medium transition-all">
@@ -280,7 +283,7 @@
             const erro = document.getElementById('erro-contratacao');
             const modal = document.getElementById('modal-sucesso');
 
-            let contratado = false;
+            let contratacaoEnviada = false;
 
             botao.addEventListener('click', async () => {
                 if (botao.disabled) {
@@ -313,7 +316,7 @@
                         return;
                     }
 
-                    contratado = true;
+                    contratacaoEnviada = true
                     modal.classList.remove('hidden');
                 } catch (error) {
                     erro.textContent =
@@ -323,9 +326,9 @@
                     erro.classList.remove('hidden');
                 } finally {
                     spinner.classList.add('hidden');
-                    botao.disabled = contratado;
-                    texto.textContent = contratado ?
-                        'Contratado' :
+                    botao.disabled = contratacaoEnviada;
+                    texto.textContent = contratacaoEnviada ?
+                        'Enviado para processamento' :
                         'Confirmar Contratação';
                 }
             });

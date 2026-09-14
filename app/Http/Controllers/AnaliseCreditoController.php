@@ -76,8 +76,8 @@ class AnaliseCreditoController extends Controller
         $analise = $service->contratar($id);
 
         return response()->json([
-            'message' => 'Contratação realizada com sucesso.',
+            'message' => 'Contratação enviada para processamento.',
             'analise' => $analise,
-        ]);
+        ], 202);
     }
 }

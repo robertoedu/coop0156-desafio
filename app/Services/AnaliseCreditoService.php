@@ -9,6 +9,7 @@ use App\Exceptions\BureauIndisponivelException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Validation\ValidationException;
+use App\Jobs\ProcessarContratacaoJob;
 use UnexpectedValueException;
 
 use Illuminate\Support\Facades\DB;
@@ -124,18 +125,23 @@ class AnaliseCreditoService
 
     public function contratar(int $id): AnaliseCredito
     {
-        $analise = AnaliseCredito::findOrFail($id);
+        return DB::transaction(function () use ($id) {
+            $analise = AnaliseCredito::lockForUpdate()->findOrFail($id);
 
-        if ($analise->status !== StatusAnalise::APROVADO) {
-            throw ValidationException::withMessages([
-                'analise' => 'Somente análises aprovadas podem ser contratadas.',
+            if ($analise->status !== StatusAnalise::APROVADO) {
+                throw ValidationException::withMessages([
+                    'analise' => 'Somente análises aprovadas podem ser contratadas.',
+                ]);
+            }
+
+            $analise->update([
+                'status' => StatusAnalise::PROCESSANDO_CONTRATACAO,
             ]);
-        }
 
-        $analise->update([
-            'status' => StatusAnalise::CONTRATADO,
-        ]);
+            ProcessarContratacaoJob::dispatch($analise->id)
+                ->afterCommit();
 
-        return $analise;
+            return $analise;
+        });
     }
 }

@@ -6,6 +6,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use App\Enums\StatusAnalise;
+use App\Models\AnaliseCredito;
+use Illuminate\Support\Facades\Log;
 
 /**
  * ⭐ DIFERENCIAL OPCIONAL — ProcessarContratacaoJob
@@ -40,6 +43,18 @@ class ProcessarContratacaoJob implements ShouldQueue
      */
     public function handle(): void
     {
-        //
+        $analise = AnaliseCredito::findOrFail($this->analiseId);
+
+        if ($analise->status !== StatusAnalise::PROCESSANDO_CONTRATACAO) {
+            return;
+        }
+
+        $analise->update([
+            'status' => StatusAnalise::CONTRATADO,
+        ]);
+
+        Log::info('Contratação de crédito concluída.', [
+            'analise_id' => $analise->id,
+        ]);
     }
 }
